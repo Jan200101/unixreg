@@ -10,9 +10,9 @@ Update your winreg imports with this
 
 ```py
 try:
-	import winreg
+    import winreg
 except ImportError:
-	import unixreg as winreg
+    import unixreg as winreg
 ```
 
 simply importing unixreg should be enough though, winreg is imported if found
