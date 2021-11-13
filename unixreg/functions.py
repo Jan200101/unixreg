@@ -2,12 +2,12 @@ import os
 from typing import Union
 
 from .key import RegKey
-from .constants import KEY_WOW64_64KEY, KEY_WRITE, KEY_READ
+from .constants import STANDARD_RIGHTS_REQUIRED, KEY_WOW64_64KEY, KEY_WRITE, KEY_READ
 
 KEY_TYPE = Union[str, RegKey]
 SUBKEY_TYPE = KEY_TYPE | Union[None]
 
-_KEY_CACHE = {}
+_KEY_CACHE = []
 _ENV_REPLACE = {
     "USERPROFILE": os.getenv("HOME")
 }
@@ -17,7 +17,7 @@ if not _CONFIG_DIR:
     _CONFIG_DIR = os.path.join(os.getenv("HOME"), ".config")
 _CONFIG_DIR = os.path.join(_CONFIG_DIR, "unixreg")
 
-def __init_values(key: KEY_TYPE, sub_key, access):
+def __init_values(key: KEY_TYPE, sub_key: SUBKEY_TYPE = None, access = STANDARD_RIGHTS_REQUIRED):
     if isinstance(key, str):
         key = RegKey(key)
 
@@ -32,9 +32,13 @@ def __create_key(key: RegKey):
 
     os.makedirs(path, exist_ok=True)
 
-def CloseKey(key: KEY_TYPE):
-    if isinstance(key, RegKey):
-        key.Close()
+def CloseKey(key: RegKey):
+    key.Close()
+
+    try:
+        _KEY_CACHE.remove(key)
+    except ValueError:
+        pass
 
 def ConnectRegistry(computer: SUBKEY_TYPE, key: str):
     if not computer:
@@ -44,6 +48,11 @@ def ConnectRegistry(computer: SUBKEY_TYPE, key: str):
     # any program that fails to catch this is to blame
     raise OSError("Not Implemented")
 
+def OpenKeyEx(key: KEY_TYPE, sub_key: SUBKEY_TYPE, reserved=0, access=KEY_READ):
+    return CreateKeyEx(key, sub_key, reserved, access)
+
+OpenKey = OpenKeyEx
+
 def CreateKey(key: KEY_TYPE, sub_key: SUBKEY_TYPE):
     return CreateKeyEx(key, sub_key)
 
@@ -51,6 +60,8 @@ def CreateKeyEx(key: KEY_TYPE, sub_key: SUBKEY_TYPE, reserved=0, access=KEY_WRIT
     key = __init_values(key, sub_key, access)
 
     __create_key(key)
+
+    _KEY_CACHE.append(key)
 
     return key
 
@@ -66,7 +77,13 @@ def DeleteKeyEx(key: KEY_TYPE, sub_key: SUBKEY_TYPE, access=KEY_WOW64_64KEY, res
         os.remove(path)
 
 def DeleteValue(key: KEY_TYPE, value: str):
-    raise NotImplementedError("Not Implemented")
+    key = __init_values(key)
+
+    filepath = os.path.join(_CONFIG_DIR, key.key, value)
+    try:
+        os.remove(filepath)
+    except FileNotFoundError:
+        pass
 
 def EnumKey(key: KEY_TYPE, index: int):
     raise NotImplementedError("Not Implemented")
@@ -83,30 +100,33 @@ def ExpandEnvironmentStrings(env: str):
 def FlushKey(key: KEY_TYPE):
     raise NotImplementedError("Not Implemented")
 
-def LoadKey(key: KEY_TYPE, sub_key: SUBKEY_TYPE, file_name: str):
-    raise NotImplementedError("Not Implemented")
-
-def OpenKeyEx(key: KEY_TYPE, sub_key: SUBKEY_TYPE, reserved=0, access=KEY_READ):
-    return CreateKeyEx(key, sub_key, reserved, access)
-
-OpenKey = OpenKeyEx
 
 def QueryInfoKey(key: KEY_TYPE):
-    QueryValueEx(key, None)
+    raise NotImplementedError("Not Implemented")
 
-def QueryValueEx(key: KEY_TYPE, sub_key: SUBKEY_TYPE):
-    return "bla"
+def QueryValueEx(key: KEY_TYPE, sub_key: SUBKEY_TYPE) -> str:
+    key = __init_values(key, sub_key)
+
+    filepath = os.path.join(_CONFIG_DIR, key.key)
+    with open(filepath, "r") as file:
+        return file.read()
 
 QueryValue = QueryValueEx
 
-def SaveKey(key: KEY_TYPE, file_name: str):
-    raise NotImplementedError("Not Implemented")
+def LoadKey(key: KEY_TYPE, sub_key: SUBKEY_TYPE, file_name: str):
+    # Not Implemented but keeping this functionality stubbed should not cause a problem
+    return
 
-def SetValue(key: KEY_TYPE, sub_key: str, typei: int, value: str):
-    return SetValueEx(key, sub_key, 0, typei, value)
+def SaveKey(key: KEY_TYPE, file_name: str) -> None:
+    # Not Implemented but keeping this functionality stubbed should not cause a problem
+    return
 
-def SetValueEx(key: KEY_TYPE, value_name: str, reserved: int, type: int, value: str):
-    print("BLABLABLA", key, value_name, value)
+def SetValue(key: KEY_TYPE, sub_key: str, type: int, value: str):
+    return SetValueEx(key, sub_key, 0, type, value)
+
+def SetValueEx(key: KEY_TYPE, value_name: str, reserved: int, type: int, value: str) -> None:
+    key = __init_values(key)
+
     filepath = os.path.join(_CONFIG_DIR, key.key, value_name)
     with open(filepath, "w") as file:
         file.write(value)
