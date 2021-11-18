@@ -3,6 +3,7 @@ from typing import Union
 
 from .key import RegKey
 from .constants import STANDARD_RIGHTS_REQUIRED, KEY_WOW64_64KEY, KEY_WRITE, KEY_READ
+from .utils import strict_types
 
 KEY_TYPE = Union[str, RegKey]
 SUBKEY_TYPE = KEY_TYPE | Union[None]
@@ -48,15 +49,18 @@ def ConnectRegistry(computer: SUBKEY_TYPE, key: str):
     # any program that fails to catch this is to blame
     raise OSError("Not Implemented")
 
-def OpenKeyEx(key: KEY_TYPE, sub_key: SUBKEY_TYPE, reserved=0, access=KEY_READ):
+@strict_types
+def OpenKeyEx(key: RegKey, sub_key: SUBKEY_TYPE, reserved=0, access=KEY_READ):
     return CreateKeyEx(key, sub_key, reserved, access)
 
 OpenKey = OpenKeyEx
 
-def CreateKey(key: KEY_TYPE, sub_key: SUBKEY_TYPE):
+@strict_types
+def CreateKey(key: RegKey, sub_key: SUBKEY_TYPE):
     return CreateKeyEx(key, sub_key)
 
-def CreateKeyEx(key: KEY_TYPE, sub_key: SUBKEY_TYPE, reserved=0, access=KEY_WRITE):
+@strict_types
+def CreateKeyEx(key: RegKey, sub_key: SUBKEY_TYPE, reserved=0, access=KEY_WRITE):
     key = __init_values(key, sub_key, access)
 
     __create_key(key)
@@ -113,13 +117,15 @@ def QueryValueEx(key: KEY_TYPE, sub_key: SUBKEY_TYPE) -> str:
 
 QueryValue = QueryValueEx
 
-def LoadKey(key: KEY_TYPE, sub_key: SUBKEY_TYPE, file_name: str):
-    # Not Implemented but keeping this functionality stubbed should not cause a problem
-    return
+@strict_types
+def LoadKey(key: RegKey, sub_key: SUBKEY_TYPE, file_name: str):
+    # this requires a win32 permission compatibility layer
+    raise OSError("Not Implemented")
 
-def SaveKey(key: KEY_TYPE, file_name: str) -> None:
-    # Not Implemented but keeping this functionality stubbed should not cause a problem
-    return
+@strict_types
+def SaveKey(key: RegKey, file_name: str) -> None:
+    # this requires a win32 permission compatibility layer
+    raise OSError("Not Implemented")
 
 def SetValue(key: KEY_TYPE, sub_key: str, type: int, value: str):
     return SetValueEx(key, sub_key, 0, type, value)
@@ -140,3 +146,32 @@ def EnableReflectionKey(key: KEY_TYPE):
 def QueryReflectionKey(key: KEY_TYPE):
     raise NotImplementedError("Not Implemented")
 
+
+# Non winreg functions
+def LoadRegFile(file_name: str): str
+    with open(file_name, "r") as reg:
+        nextline = reg.readline()
+
+        key = None
+
+        while nextline:
+            line = nextline.strip()
+            nextline = reg.readline()
+
+            if len(line) == 1: continue
+            split = line.split("=")
+
+            keyline = strip_brackets(line)
+            if keyline:
+                key = keyline
+            elif key and len(split) == 2:
+                name, value = split
+                name = strip_quotes(name)
+                value = strip_quotes(value)
+
+                os.makedirs(key, exist_ok=True)
+
+                with open(os.path.join(_CONFIG_DIR, key.key, name), "w") as regvalue:
+                    regvalue.write(value)
+
+                print(f"[{key}] {name}={value}")
