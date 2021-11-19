@@ -1,39 +1,61 @@
+# pylint: disable=invalid-name, unused-argument, unspecified-encoding, missing-function-docstring
+"""
+Implements all winreg functions
+
+https://docs.python.org/3/library/winreg.html#functions
+"""
 import os
 from typing import Union
+from re import findall
+from tempfile import TemporaryDirectory
+from warnings import warn
 
 from .key import RegKey
 from .constants import STANDARD_RIGHTS_REQUIRED, KEY_WOW64_64KEY, KEY_WRITE, KEY_READ
 from .utils import strict_types
 
 KEY_TYPE = Union[str, RegKey]
-SUBKEY_TYPE = KEY_TYPE | Union[None]
+SUBKEY_TYPE = Union[str, RegKey, None]
 
 _KEY_CACHE = []
 _ENV_REPLACE = {
-    "USERPROFILE": os.getenv("HOME")
+    "USERPROFILE": "HOME"
 }
 
 _CONFIG_DIR = os.getenv("XDG_CONFIG_HOME")
 if not _CONFIG_DIR:
-    _CONFIG_DIR = os.path.join(os.getenv("HOME"), ".config")
+    home = os.getenv("HOME")
+    if home:
+        _CONFIG_DIR = os.path.join(home, ".config")
+    else:
+        _CONFIG_DIR = TemporaryDirectory().name
+        if not os.getenv("TOX"):
+            warn(f"Could not find directory to put registry in. Falling back to {_CONFIG_DIR}")
 _CONFIG_DIR = os.path.join(_CONFIG_DIR, "unixreg")
 
+@strict_types
 def __init_values(key: KEY_TYPE, sub_key: SUBKEY_TYPE = None, access = STANDARD_RIGHTS_REQUIRED):
     if isinstance(key, str):
         key = RegKey(key)
 
-    if sub_key:
+    if sub_key is not None:
+        print(sub_key)
         key = key + sub_key
     key.access = access
 
     return key
 
+@strict_types
 def __create_key(key: RegKey):
     path = os.path.join(_CONFIG_DIR, key.key)
 
     os.makedirs(path, exist_ok=True)
 
 def CloseKey(key: RegKey):
+    """
+    Closes a previously opened registry key.
+    The key argument specifies a previously opened key.
+    """
     key.Close()
 
     try:
@@ -41,12 +63,15 @@ def CloseKey(key: RegKey):
     except ValueError:
         pass
 
-def ConnectRegistry(computer: SUBKEY_TYPE, key: str):
+def ConnectRegistry(computer: Union[str, None], key: RegKey):
+    """
+    Opens a registry handle on another computer and returns the handle
+
+    If computer_name is None, the local computer is used, otherwise
+    OSError is raised to signify the function failing
+    """
     if not computer:
         return OpenKey(key, None)
-
-    # ConnectRegistry is expected to throw an OSError on failure
-    # any program that fails to catch this is to blame
     raise OSError("Not Implemented")
 
 @strict_types
@@ -96,8 +121,16 @@ def EnumValue(key: KEY_TYPE, index: int):
     raise NotImplementedError("Not Implemented")
 
 def ExpandEnvironmentStrings(env: str):
-    for var in _ENV_REPLACE:
-        env = env.replace(f"%{var}%", _ENV_REPLACE[var])
+    for key, val in _ENV_REPLACE.items():
+        env = env.replace(f"%{key}%", f"%{val}%")
+
+    match = findall(r"%(.+?)%", env)
+
+    for val in match:
+        valenv = os.getenv(val)
+        if valenv:
+            env = env.replace(f"%{val}%", valenv)
+
     env.replace("\\", os.path.sep)
     return env
 
@@ -127,10 +160,13 @@ def SaveKey(key: RegKey, file_name: str) -> None:
     # this requires a win32 permission compatibility layer
     raise OSError("Not Implemented")
 
-def SetValue(key: KEY_TYPE, sub_key: str, type: int, value: str):
-    return SetValueEx(key, sub_key, 0, type, value)
+def SetValue(key: KEY_TYPE, sub_key: SUBKEY_TYPE, typearg: int, value: str):
+    if isinstance(sub_key, RegKey):
+        sub_key = sub_key.key
 
-def SetValueEx(key: KEY_TYPE, value_name: str, reserved: int, type: int, value: str) -> None:
+    return SetValueEx(key, sub_key, 0, typearg, value)
+
+def SetValueEx(key: KEY_TYPE, value_name: str, reserved: int, typearg: int, value: str) -> None:
     key = __init_values(key)
 
     filepath = os.path.join(_CONFIG_DIR, key.key, value_name)
@@ -148,7 +184,20 @@ def QueryReflectionKey(key: KEY_TYPE):
 
 
 # Non winreg functions
-def LoadRegFile(file_name: str): str
+def LoadRegFile(file_name: str) -> str:
+
+    def _strip_quotes(val) -> str:
+        _QUOTE_LIST = ("\"", '\'')
+        if val.startswith(_QUOTE_LIST) and val.endswith(_QUOTE_LIST):
+            val = val[1:-1]
+        return val
+
+    def _strip_brackets(val) -> str:
+        _BRACKET_LIST = ("[", "]")
+        if val.startswith(_BRACKET_LIST) and val.endswith(_BRACKET_LIST):
+            val = val[1:-1]
+        return val
+
     with open(file_name, "r") as reg:
         nextline = reg.readline()
 
@@ -158,16 +207,18 @@ def LoadRegFile(file_name: str): str
             line = nextline.strip()
             nextline = reg.readline()
 
-            if len(line) == 1: continue
+            if len(line) == 1:
+                continue
+
             split = line.split("=")
 
-            keyline = strip_brackets(line)
+            keyline = _strip_brackets(line)
             if keyline:
                 key = keyline
             elif key and len(split) == 2:
                 name, value = split
-                name = strip_quotes(name)
-                value = strip_quotes(value)
+                name = _strip_quotes(name)
+                value = _strip_quotes(value)
 
                 os.makedirs(key, exist_ok=True)
 

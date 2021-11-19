@@ -1,16 +1,26 @@
+# pylint: disable=invalid-name, global-statement
+"""
+Implements anything related to the Registry Handle
+"""
 import os
 from copy import deepcopy
 from typing import TypeVar, Union
-
-from .constants import STANDARD_RIGHTS_REQUIRED
 
 RegKeyT = TypeVar("RegKeyT", bound="RegKey")
 
 _HANDLE_COUNTER = 0
 
 class RegKey:
+    """
+    Implementation of the Registry Handle
+    https://docs.python.org/3/library/winreg.html#registry-handle-objects
+    """
 
-    def __init__(self, key: str = "", access: int = STANDARD_RIGHTS_REQUIRED):
+    key = ""
+    handle = 0
+    access = 0
+
+    def __init__(self, key: str = "", access: int = 1):
         global _HANDLE_COUNTER
         _HANDLE_COUNTER += 1
 
@@ -28,25 +38,32 @@ class RegKey:
             retval.key = os.path.join(self.key, other)
             return retval
 
-        return None
+        raise TypeError("Invalid Type")
 
     def __enter__(self) -> RegKeyT:
         return self
 
     def __exit__(self, *args, **kwargs):
-        pass
+        self.Close()
 
     def __repr__(self):
         return __class__.__name__
 
     def __str__(self):
-        return f"{__class__.__name__}({self.key}, {self.handle}, {self.access})"
+        return f"{__class__.__name__}(\"{self.key}\", {self.handle}, {self.access})"
 
     def Close(self):
-        pass
+        """
+        Closes the key by cleaning up its values
+        """
 
-    def Detach(self):
-        pass
+    def Detach(self) -> int:
+        """
+        Is suppose to detach the handle and give it to someone else,
+        but we don't have that luxury
+        """
+        self.Close()
+        return self.handle
 
 
 PyHKEY = RegKey
