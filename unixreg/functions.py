@@ -9,15 +9,15 @@ from typing import Union
 from re import findall
 from tempfile import TemporaryDirectory
 from warnings import warn
+from typing import Optional, List
 
-from .key import RegKey
-from .constants import STANDARD_RIGHTS_REQUIRED, KEY_WOW64_64KEY, KEY_WRITE, KEY_READ
-from .utils import strict_types
+from unixreg.key import RegKey
+from unixreg.constants import STANDARD_RIGHTS_REQUIRED, KEY_WOW64_64KEY, KEY_WRITE, KEY_READ
 
 KEY_TYPE = Union[str, RegKey]
 SUBKEY_TYPE = Union[str, RegKey, None]
 
-_KEY_CACHE = []
+_KEY_CACHE: List[RegKey] = []
 _ENV_REPLACE = {
     "USERPROFILE": "HOME"
 }
@@ -33,7 +33,6 @@ if not _CONFIG_DIR:
             warn(f"Could not find directory to put registry in. Falling back to {_CONFIG_DIR}")
 _CONFIG_DIR = os.path.join(_CONFIG_DIR, "unixreg")
 
-@strict_types
 def __init_values(key: KEY_TYPE, sub_key: SUBKEY_TYPE = None, access = STANDARD_RIGHTS_REQUIRED):
     if isinstance(key, str):
         key = RegKey(key)
@@ -45,11 +44,11 @@ def __init_values(key: KEY_TYPE, sub_key: SUBKEY_TYPE = None, access = STANDARD_
 
     return key
 
-@strict_types
 def __create_key(key: RegKey):
-    path = os.path.join(_CONFIG_DIR, key.key)
+    if _CONFIG_DIR and key and key.key:
+        path = os.path.join(_CONFIG_DIR, key.key)
 
-    os.makedirs(path, exist_ok=True)
+        os.makedirs(path, exist_ok=True)
 
 def CloseKey(key: RegKey):
     """
@@ -74,17 +73,14 @@ def ConnectRegistry(computer: Union[str, None], key: RegKey):
         return OpenKey(key, None)
     raise OSError("Not Implemented")
 
-@strict_types
 def OpenKeyEx(key: RegKey, sub_key: SUBKEY_TYPE, reserved=0, access=KEY_READ):
     return CreateKeyEx(key, sub_key, reserved, access)
 
 OpenKey = OpenKeyEx
 
-@strict_types
 def CreateKey(key: RegKey, sub_key: SUBKEY_TYPE):
     return CreateKeyEx(key, sub_key)
 
-@strict_types
 def CreateKeyEx(key: RegKey, sub_key: SUBKEY_TYPE, reserved=0, access=KEY_WRITE):
     key = __init_values(key, sub_key, access)
 
@@ -99,20 +95,22 @@ def DeleteKey(key: KEY_TYPE, sub_key: SUBKEY_TYPE):
     return DeleteKeyEx(key, sub_key)
 
 def DeleteKeyEx(key: KEY_TYPE, sub_key: SUBKEY_TYPE, access=KEY_WOW64_64KEY, reserved=0):
-    key = __init_values(key, sub_key, access)
+    kkey = __init_values(key, sub_key, access)
 
-    path = os.path.join(_CONFIG_DIR, key.key)
-    if os.path.isfile(path):
-        os.remove(path)
+    if _CONFIG_DIR:
+        path = os.path.join(_CONFIG_DIR, kkey.key)
+        if os.path.isfile(path):
+            os.remove(path)
 
 def DeleteValue(key: KEY_TYPE, value: str):
-    key = __init_values(key)
+    kkey = __init_values(key)
 
-    filepath = os.path.join(_CONFIG_DIR, key.key, value)
-    try:
-        os.remove(filepath)
-    except FileNotFoundError:
-        pass
+    if _CONFIG_DIR:
+        filepath = os.path.join(_CONFIG_DIR, kkey.key, value)
+        try:
+            os.remove(filepath)
+        except FileNotFoundError:
+            pass
 
 def EnumKey(key: KEY_TYPE, index: int):
     raise NotImplementedError("Not Implemented")
@@ -142,36 +140,39 @@ def QueryInfoKey(key: KEY_TYPE):
     raise NotImplementedError("Not Implemented")
 
 def QueryValueEx(key: KEY_TYPE, sub_key: SUBKEY_TYPE) -> str:
-    key = __init_values(key, sub_key)
+    kkey = __init_values(key, sub_key)
 
-    filepath = os.path.join(_CONFIG_DIR, key.key)
-    with open(filepath, "r") as file:
-        return file.read()
+    if _CONFIG_DIR:
+        filepath = os.path.join(_CONFIG_DIR, kkey.key)
+        with open(filepath, "r") as file:
+            return file.read()
+
+    return ""
 
 QueryValue = QueryValueEx
 
-@strict_types
 def LoadKey(key: RegKey, sub_key: SUBKEY_TYPE, file_name: str):
     # this requires a win32 permission compatibility layer
     raise OSError("Not Implemented")
 
-@strict_types
 def SaveKey(key: RegKey, file_name: str) -> None:
     # this requires a win32 permission compatibility layer
     raise OSError("Not Implemented")
 
-def SetValue(key: KEY_TYPE, sub_key: SUBKEY_TYPE, typearg: int, value: str):
+def SetValue(key: KEY_TYPE, sub_key: SUBKEY_TYPE, typearg: int, value: str) -> None:
     if isinstance(sub_key, RegKey):
         sub_key = sub_key.key
 
-    return SetValueEx(key, sub_key, 0, typearg, value)
+    if sub_key:
+        return SetValueEx(key, sub_key, 0, typearg, value)
 
 def SetValueEx(key: KEY_TYPE, value_name: str, reserved: int, typearg: int, value: str) -> None:
-    key = __init_values(key)
+    kkey = __init_values(key)
 
-    filepath = os.path.join(_CONFIG_DIR, key.key, value_name)
-    with open(filepath, "w") as file:
-        file.write(value)
+    if _CONFIG_DIR:
+        filepath = os.path.join(_CONFIG_DIR, kkey.key, value_name)
+        with open(filepath, "w") as file:
+            file.write(value)
 
 def DisableReflectionKey(key: KEY_TYPE):
     raise NotImplementedError("Not Implemented")
@@ -184,7 +185,7 @@ def QueryReflectionKey(key: KEY_TYPE):
 
 
 # Non winreg functions
-def LoadRegFile(file_name: str) -> str:
+def LoadRegFile(file_name: str) -> Optional[str]:
 
     def _strip_quotes(val) -> str:
         _QUOTE_LIST = ("\"", '\'')
@@ -201,7 +202,7 @@ def LoadRegFile(file_name: str) -> str:
     with open(file_name, "r") as reg:
         nextline = reg.readline()
 
-        key = None
+        key: Optional[str] = None
 
         while nextline:
             line = nextline.strip()
@@ -222,7 +223,10 @@ def LoadRegFile(file_name: str) -> str:
 
                 os.makedirs(key, exist_ok=True)
 
-                with open(os.path.join(_CONFIG_DIR, key.key, name), "w") as regvalue:
-                    regvalue.write(value)
+                if _CONFIG_DIR:
+                    with open(os.path.join(_CONFIG_DIR, key, name), "w") as regvalue:
+                        regvalue.write(value)
 
                 print(f"[{key}] {name}={value}")
+
+    return None

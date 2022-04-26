@@ -2,11 +2,10 @@
 """
 Implements anything related to the Registry Handle
 """
+from __future__ import annotations
 import os
 from copy import deepcopy
 from typing import TypeVar, Union
-
-RegKeyT = TypeVar("RegKeyT", bound="RegKey")
 
 _HANDLE_COUNTER = 0
 
@@ -28,8 +27,8 @@ class RegKey:
         self.handle = _HANDLE_COUNTER
         self.access = access
 
-    def __add__(self, other: Union[str, RegKeyT]) -> RegKeyT:
-        if isinstance(other, __class__):
+    def __add__(self, other: Union[str, RegKey]) -> RegKey:
+        if isinstance(other, self.__class__):
             other = other.key
 
         if isinstance(other, str):
@@ -40,7 +39,7 @@ class RegKey:
 
         raise TypeError("Invalid Type")
 
-    def __enter__(self) -> RegKeyT:
+    def __enter__(self) -> RegKey:
         return self
 
     def __exit__(self, *args, **kwargs):

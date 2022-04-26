@@ -9,6 +9,6 @@ __version__ = "0.1.1"
 try:
     from winreg import *
 except ImportError:
-    from .functions import *
-    from .constants import *
-    from .key import *
+    from unixreg.functions import *
+    from unixreg.constants import *
+    from unixreg.key import *
